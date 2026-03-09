@@ -1,0 +1,81 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+
+#define BUFFER_SIZE 1024
+
+int main() {
+    char *ip = "127.0.0.1";
+    int port;
+    int server_sock;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t addr_size;
+    char buffer[BUFFER_SIZE];
+    int n;
+
+    // 1. Create UDP Socket
+    server_sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (server_sock < 0){
+        perror("[-]Socket error");
+        exit(1);
+    }
+    printf("[+]UDP server socket created.\n");
+
+    // 2. Input Port
+    printf("Enter the Port number to listen on: ");
+    scanf("%d", &port);
+    while ((getchar()) != '\n'); // Clear input buffer
+
+    memset(&server_addr, '\0', sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+    server_addr.sin_addr.s_addr = inet_addr(ip);
+
+    // 3. Bind
+    n = bind(server_sock, (struct sockaddr*)&server_addr, sizeof(server_addr));
+    if (n < 0){
+        perror("[-]Bind error");
+        exit(1);
+    }
+    printf("[+]Bind to the port number: %d\n", port);
+    printf("Listening...\n");
+
+    // 4. Chat Loop
+    while(1){
+        // --- STEP A: Wait for Client Message ---
+        memset(buffer, 0, BUFFER_SIZE);
+        addr_size = sizeof(client_addr);
+        
+        // recvfrom captures the sender's details in client_addr
+        n = recvfrom(server_sock, buffer, BUFFER_SIZE, 0, (struct sockaddr*)&client_addr, &addr_size);
+        
+        // Check exit
+        if (strcmp(buffer, "exit") == 0) {
+            printf("[!] Client requested exit. Shutting down.\n");
+            break; 
+        }
+        printf("Client: %s\n", buffer);
+
+        // --- STEP B: Server types a response ---
+        memset(buffer, 0, BUFFER_SIZE);
+        printf("Server (You): ");
+        fgets(buffer, BUFFER_SIZE, stdin);
+        buffer[strcspn(buffer, "\n")] = 0; // Remove newline
+
+        // Send back using the captured client_addr
+        sendto(server_sock, buffer, strlen(buffer), 0, (struct sockaddr*)&client_addr, addr_size);
+
+        // Check exit
+        if (strcmp(buffer, "exit") == 0) {
+            printf("[!] Exit command sent. Shutting down.\n");
+            break;
+        }
+    }
+
+    close(server_sock);
+    printf("[+]Server socket closed.\n");
+    return 0;
+}
