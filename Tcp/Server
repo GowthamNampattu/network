@@ -1,0 +1,98 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+
+#define BUFFER_SIZE 1024
+
+int main() {
+    char *ip = "127.0.0.1";
+    int port;
+    int server_sock, client_sock;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t addr_size;
+    char buffer[BUFFER_SIZE];
+    int n, opt = 1;
+
+    // 1. Create Socket
+    server_sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_sock < 0){
+        perror("[-]Socket error");
+        exit(1);
+    }
+    printf("[+]TCP server socket created.\n");
+
+    // 2. Allow Port Reuse (Prevents 'Address already in use' error)
+    setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    // 3. Input Port
+    printf("Enter the Port number to listen on: ");
+    scanf("%d", &port);
+    // CRITICAL: Clear input buffer to remove newline from scanf
+    while ((getchar()) != '\n'); 
+
+    memset(&server_addr, '\0', sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+    server_addr.sin_addr.s_addr = inet_addr(ip);
+
+    // 4. Bind
+    n = bind(server_sock, (struct sockaddr*)&server_addr, sizeof(server_addr));
+    if (n < 0){
+        perror("[-]Bind error");
+        exit(1);
+    }
+    printf("[+]Bind to the port number: %d\n", port);
+
+    // 5. Listen
+    listen(server_sock, 5);
+    printf("Listening...\n");
+
+    // 6. Accept
+    addr_size = sizeof(client_addr);
+    client_sock = accept(server_sock, (struct sockaddr*)&client_addr, &addr_size);
+    printf("[+]Client connected.\n");
+
+    // 7. Chat Loop (Ping-Pong: Server waits for Client first)
+    while(1){
+        // --- STEP A: Wait for Client Message ---
+        memset(buffer, 0, BUFFER_SIZE);
+        n = recv(client_sock, buffer, BUFFER_SIZE - 1, 0);
+        
+        if (n <= 0) {
+            printf("[-]Client disconnected.\n");
+            break;
+        }
+
+        // Check if Client said "exit"
+        if (strcmp(buffer, "exit") == 0) {
+            printf("[!] Client requested exit. Shutting down.\n");
+            break; 
+        }
+        printf("Client: %s\n", buffer);
+
+        // --- STEP B: Server types a response ---
+        memset(buffer, 0, BUFFER_SIZE);
+        printf("Server (You): ");
+        fgets(buffer, BUFFER_SIZE, stdin);
+        
+        // Remove trailing newline
+        buffer[strcspn(buffer, "\n")] = 0; 
+
+        // Send to Client
+        send(client_sock, buffer, strlen(buffer), 0);
+
+        // Check if Server typed "exit"
+        if (strcmp(buffer, "exit") == 0) {
+            printf("[!] Exit command sent. Shutting down.\n");
+            break;
+        }
+    }
+
+    close(client_sock);
+    close(server_sock);
+    printf("[+]Server sockets closed.\n");
+    return 0;
+}
